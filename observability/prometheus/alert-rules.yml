@@ -96,6 +96,19 @@ groups:
           summary: "Blockchain RPC connection failed on {{ $labels.instance }}"
           description: "Cannot connect to blockchain RPC endpoint"
 
+  - name: attestor_alerts
+    interval: 30s
+    rules:
+      - alert: AttestorNoActiveStake
+        expr: qc_attestor_active_stake_stroops == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: attestor
+        annotations:
+          summary: "Attestor {{ $labels.attestor }} has no active stake"
+          description: "No active borrower vouches remain for this attestor. Verify the withdrawal or rotation was expected."
+
   - name: infrastructure_alerts
     interval: 30s
     rules:

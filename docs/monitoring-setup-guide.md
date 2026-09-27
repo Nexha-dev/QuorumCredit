@@ -140,8 +140,11 @@ curl -s http://localhost:9090/metrics | head -20
 # Expected output:
 # qc_indexer_ledger_height 12345
 # qc_loan_count_total 42
+# qc_attestor_active_stake_stroops{attestor="..."} 10000000
 # ...
 ```
+
+Attestor metrics are derived from indexed vouch events and reflect on-chain stake and activity, not node uptime or signing availability. The repository's Grafana provisioning includes an **Attestor Health** dashboard, and its Prometheus rules warn when an observed attestor has no active stake for five minutes.
 
 ---
 

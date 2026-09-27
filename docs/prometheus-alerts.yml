@@ -191,6 +191,17 @@ groups:
           description: "Vouch count decreased by {{ $value | humanize }} in the last hour. May indicate reduced voucher participation."
           runbook_url: "https://docs.quorumcredit.io/runbooks/vouch-decline"
 
+      - alert: AttestorNoActiveStake
+        expr: qc_attestor_active_stake_stroops == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: attestor
+          team: protocol
+        annotations:
+          summary: "Attestor {{ $labels.attestor }} has no active stake"
+          description: "No active borrower vouches remain. Verify the withdrawal or rotation was expected; this metric does not measure attestor process uptime."
+
       - alert: PrometheusHighMemory
         expr: process_resident_memory_bytes{job="prometheus"} > 1_610_612_736
         for: 15m
