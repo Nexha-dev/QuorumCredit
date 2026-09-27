@@ -19,9 +19,19 @@ import {
   type WebhookSender,
 } from "../webhooks/delivery.js";
 import { metrics } from "./metricsRegistry.js";
+import { verifyToken } from "../auth/tokens.js";
+import type { ApiKeyStore } from "../auth/apiKeyStore.js";
 
 export interface WebhookRoutesContext {
   webhookSecret?: string; // Secret for receiving webhooks (if this service receives webhooks)
+  /**
+   * Secret used to verify `Authorization: Bearer <token>` on webhook routes.
+   * Declared here because `requireWebhookAuth` reads it; without the field the
+   * handler could never authenticate a token.
+   */
+  authSecret?: string;
+  /** Provisioned API key store backing `X-Api-Key` authentication. */
+  apiKeyStore?: ApiKeyStore;
   /**
    * Rate limiter for the test-delivery endpoint. When provided, caps the number
    * of test-delivery requests per IP per minute to prevent request amplification.

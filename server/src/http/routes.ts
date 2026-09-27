@@ -77,6 +77,32 @@ function queueIfPartitioned(
   return true;
 }
 
+/**
+ * Issue #1766: HTTP status for a rejected credential link. The split keeps
+ * "you pointed at something that isn't there" (404) apart from "that
+ * relationship already exists / would close a cycle" (409) and "the
+ * relationship is malformed for these two credentials" (422).
+ */
+function linkRejectionStatus(code: LinkRejectionCode): number {
+  switch (code) {
+    case "credential_not_found":
+      return 404;
+    case "duplicate_link":
+    case "cycle_detected":
+      return 409;
+    case "credential_revoked":
+    case "holder_mismatch":
+    case "type_mismatch":
+    case "temporal_violation":
+    case "cross_holder_not_acknowledged":
+      return 422;
+    case "self_link":
+    case "unknown_link_type":
+    default:
+      return 400;
+  }
+}
+
 interface TokenRequestBody {
   apiKey?: string;
   borrower?: string;
@@ -1012,9 +1038,9 @@ export function handleHttpRequest(
         res.end(
           JSON.stringify({
             credentialId: body.credentialId,
-            status: "pending",
+            status: verification.verificationStatus,
             message: "identity verification initiated",
-            verificationId: body.credentialId,
+            verification,
           })
         );
       })
@@ -1249,6 +1275,136 @@ export function handleHttpRequest(
     metrics.incCounter("qc_verification_reports_generated_total");
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(report));
+    return;
+  }
+
+  // ── Issue #1766: Credential Linking Service ──
+  //
+  // The relationship graph itself lives in `credentialLinkingService`; these
+  // handlers validate, create, remove and traverse links. The documented path
+  // for the create call is `POST /api/v1/credentials/{id}/link`; the same
+  // handlers also answer the unversioned `/credentials/...` form used by every
+  // other route in this file, so both stay interchangeable.
+
+  const linkStatsMatch = url.pathname.match(/^(?:\/api\/v1)?\/credentials\/links\/stats$/);
+  if (linkStatsMatch && req.method === "GET") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(credentialLinkingService.getStats()));
+    return;
+  }
+
+  // POST /credentials/:credentialId/link - Link this credential to another one
+  const linkCreateMatch = url.pathname.match(/^(?:\/api\/v1)?\/credentials\/([^/]+)\/link$/);
+  if (linkCreateMatch && req.method === "POST") {
+    const credentialId = decodeURIComponent(linkCreateMatch[1] as string);
+
+    readJsonBody<{
+      targetId?: string;
+      type?: string;
+      createdBy?: string;
+      metadata?: Record<string, unknown>;
+      allowCrossHolder?: boolean;
+    }>(req)
+      .then((body) => {
+        if (!body.targetId || !body.type) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "targetId and type required" }));
+          return;
+        }
+
+        const result = credentialLinkingService.linkCredential({
+          sourceId: credentialId,
+          targetId: body.targetId,
+          type: body.type,
+          createdBy: body.createdBy,
+          metadata: body.metadata,
+          allowCrossHolder: body.allowCrossHolder === true,
+        });
+
+        if (!result.ok) {
+          metrics.incCounter("qc_credential_link_api_rejections_total");
+          res.writeHead(linkRejectionStatus(result.code), {
+            "content-type": "application/json",
+          });
+          res.end(JSON.stringify({ error: result.reason, code: result.code }));
+          return;
+        }
+
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end(JSON.stringify(result.link));
+      })
+      .catch(() => {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid request body" }));
+      });
+    return;
+  }
+
+  // GET /credentials/:credentialId/links - List the credential's relationships
+  const linksListMatch = url.pathname.match(/^(?:\/api\/v1)?\/credentials\/([^/]+)\/links$/);
+  if (linksListMatch && req.method === "GET") {
+    const credentialId = decodeURIComponent(linksListMatch[1] as string);
+
+    if (!credentialStore.getCredential(credentialId)) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "credential not found" }));
+      return;
+    }
+
+    const links = credentialLinkingService.getLinksForCredential(credentialId);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        ...links,
+        linkedCredentialIds: credentialLinkingService
+          .getLinkedCredentials(credentialId)
+          .map((c) => c.id),
+      })
+    );
+    return;
+  }
+
+  // GET /credentials/:credentialId/relationship-graph - Traverse the graph
+  const graphMatch = url.pathname.match(
+    /^(?:\/api\/v1)?\/credentials\/([^/]+)\/relationship-graph$/
+  );
+  if (graphMatch && req.method === "GET") {
+    const credentialId = decodeURIComponent(graphMatch[1] as string);
+
+    if (!credentialStore.getCredential(credentialId)) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "credential not found" }));
+      return;
+    }
+
+    const requestedDepth = Number.parseInt(url.searchParams.get("depth") ?? "2", 10);
+    const depth = Number.isFinite(requestedDepth) ? Math.min(Math.max(requestedDepth, 0), 5) : 2;
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify(credentialLinkingService.getRelationshipGraph(credentialId, depth))
+    );
+    return;
+  }
+
+  // DELETE /credentials/:credentialId/link/:linkId - Remove a relationship
+  const linkDeleteMatch = url.pathname.match(
+    /^(?:\/api\/v1)?\/credentials\/([^/]+)\/link\/([^/]+)$/
+  );
+  if (linkDeleteMatch && req.method === "DELETE") {
+    const credentialId = decodeURIComponent(linkDeleteMatch[1] as string);
+    const linkId = decodeURIComponent(linkDeleteMatch[2] as string);
+    const link = credentialLinkingService.getLink(linkId);
+
+    if (!link || (link.sourceId !== credentialId && link.targetId !== credentialId)) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "link not found for this credential" }));
+      return;
+    }
+
+    credentialLinkingService.unlink(linkId);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ removed: true, linkId }));
     return;
   }
 
