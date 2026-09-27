@@ -49,7 +49,13 @@ The indexer exposes the following metrics sourced entirely from the Soroban even
 | `qc_slash_events_total` | Counter | — | Total slash events |
 | `qc_slash_amount_total` | Counter | `token` | Total stroops slashed |
 | `qc_vouch_count` | Gauge | — | Currently active vouches |
+| `qc_attestor_active_vouches` | Gauge | `attestor` | Active borrower vouches per observed attestor |
+| `qc_attestor_active_stake_stroops` | Gauge | `attestor` | Active vouch stake per observed attestor, in stroops |
+| `qc_attestor_last_vouch_ledger` | Gauge | `attestor` | Ledger of the latest indexed vouch event for an attestor |
+| `qc_attestor_vouch_events_total` | Counter | `attestor`, `action` | Indexed create/increase/decrease/withdraw events per attestor |
 | `qc_ws_queue_drops_total` | Counter | `type` | WebSocket queue overflow drops (`loan` or `metrics`) |
+
+The **Attestor Health** Grafana dashboard visualizes event-derived stake, active vouches, event rates, and ledgers since last vouch activity. These metrics describe on-chain vouch activity; they do not indicate attestor process uptime or off-chain signing availability. `AttestorNoActiveStake` warns when an observed attestor has no active stake for five minutes, so operators can verify that a withdrawal or rotation was expected.
 
 ### Metric Semantics
 

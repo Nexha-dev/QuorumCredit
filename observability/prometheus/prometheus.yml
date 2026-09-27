@@ -54,7 +54,7 @@ scrape_configs:
     scrape_timeout: 10s
     metric_relabel_configs:
       - source_labels: [__name__]
-        keep: '^(indexer_|process_|go_)'
+        keep: '^(qc_|indexer_|process_|go_)'
 
   # Dashboard Metrics
   - job_name: 'dashboard'

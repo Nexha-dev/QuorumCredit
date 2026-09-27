@@ -1,0 +1,70 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Value", "desc": true }] },
+      "targets": [{ "expr": "qc_attestor_active_stake_stroops", "format": "table", "instant": true, "refId": "A" }],
+      "title": "Active Stake by Attestor (stroops)",
+      "type": "table"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "showPoints": "never" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "qc_attestor_active_vouches", "legendFormat": "{{attestor}}", "refId": "A" }],
+      "title": "Active Vouches by Attestor",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "showPoints": "never" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "qc_attestor_last_vouch_ledger", "legendFormat": "{{attestor}}", "refId": "A" }],
+      "title": "Last Vouch Event Ledger",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "showPoints": "never" }, "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "sum by (attestor, action) (rate(qc_attestor_vouch_events_total[1h]))", "legendFormat": "{{attestor}} / {{action}}", "refId": "A" }],
+      "title": "Vouch Event Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "options": { "0": { "color": "red", "index": 0, "text": "No active stake" } }, "type": "value" }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Value", "desc": false }] },
+      "targets": [{ "expr": "qc_attestor_active_stake_stroops == 0", "format": "table", "instant": true, "refId": "A" }],
+      "title": "Attestors with No Active Stake",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["attestor", "health", "quorumcredit"],
+  "time": { "from": "now-24h", "to": "now" },
+  "title": "Attestor Health",
+  "uid": "quorum-attestor-health",
+  "version": 1
+}

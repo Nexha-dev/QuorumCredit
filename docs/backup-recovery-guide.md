@@ -28,9 +28,8 @@ This guide documents backup and recovery procedures for QuorumCredit contract st
   key to trust or when a WASM upgrade is safe to apply are not automatable.
 - Reviewing *why* a backup shows `"complete": false` or a `check_invariants`
   failure, and deciding how to remediate, is always a human judgment call.
-- Off-chain database backups, cold-storage archival, and alerting integration
-  described later in this guide are illustrative examples, not scripts shipped
-  in this repo.
+- Off-chain database backups and cold-storage archival described later in this
+   guide are illustrative examples, not scripts shipped in this repo.
 
 ## Automated Backup Testing (Issue #1225)
 
@@ -39,7 +38,7 @@ Backups that are never restored are unverified assumptions, not disaster recover
 **What it does, every run:**
 1. Runs `scripts/backup.sh` against the configured contract.
 2. Verifies the resulting manifest: completeness proof (`complete` must not be `false`) and a recomputed checksum match (catches silent corruption/truncation).
-3. Restores the archive via `scripts/restore.sh --scenario 6` into a **disposable staging contract** (`STAGING_CONTRACT_ID`) — dry-run by default, `--execute` only when `BACKUP_TEST_EXECUTE=true` is explicitly set.
+3. Executes `scripts/restore.sh --scenario 6` against a **disposable staging contract** (`STAGING_CONTRACT_ID`) that must differ from the source contract. The automated drill fails closed if execution is disabled or the staging target is missing or matches the source; a dry-run is never counted as a successful restore test.
 4. When executed, re-queries the staging contract for all sampled borrowers and diffs each against the backed-up values:
    - `get_paused` — contract pause state
    - `get_loan` — loan records for each borrower
@@ -48,19 +47,20 @@ Backups that are never restored are unverified assumptions, not disaster recover
    - `total_vouched` — total vouched amounts for each borrower
    
    By default, all borrowers present in the backup's `derived_addresses.txt` are sampled. This can be overridden by setting `BACKUP_TEST_SAMPLE_BORROWERS` to point to a custom address list. A restore that "completes" but corrupts, drops, or misattributes any loan/vouch record will be caught as a failure rather than reported as a pass.
-5. Appends a result record (pass/fail, failure reason, per-step booleans, duration) to `backups/test-results/history.jsonl` and prints the all-time coverage/success rate computed from that history.
+5. Appends a result record (pass/fail, failure reason, per-step booleans, duration) to `backups/test-results/history.jsonl` and prints the cumulative coverage/success rate computed from that history.
 
-**Schedule:** `.github/workflows/backup-restore-test.yml` runs this weekly (Sundays 03:00 UTC) and on manual dispatch, uploading the history file and produced archive as build artifacts. It requires these repository secrets/variables to actually exercise a restore (falls back to a backup-only drill if `STAGING_CONTRACT_ID` is unset):
+**Schedule:** `.github/workflows/backup-restore-test.yml` runs this weekly (Sundays 03:00 UTC) and on manual dispatch. Each run downloads the previous verification-history artifact before appending its result, then uploads the cumulative history and backup archive. A failed run opens or updates a GitHub issue titled **Automated backup verification failed**; a later successful run comments on and closes that issue. The workflow requires these repository secrets/variables:
 
 | Name | Kind | Purpose |
 |---|---|---|
 | `BACKUP_TEST_CONTRACT_ID` / `BACKUP_TEST_ADMIN_KEY` | secret | Contract to back up |
-| `BACKUP_TEST_STAGING_CONTRACT_ID` / `BACKUP_TEST_STAGING_ADMIN_KEY` | secret | Disposable staging contract to restore into |
-| `BACKUP_TEST_NETWORK` | variable | `testnet` (default) or `mainnet`-adjacent staging network |
-| `BACKUP_TEST_EXECUTE` | variable | `"true"` to actually apply the restore and run correctness verification; otherwise dry-run only |
+| `BACKUP_TEST_STAGING_CONTRACT_ID` / `BACKUP_TEST_STAGING_ADMIN_KEY` | secret | Disposable staging contract and key; the staging contract must differ from the source |
+| `BACKUP_TEST_NETWORK` | variable | `testnet` (default) or the network hosting both contracts |
 | `BACKUP_TEST_SAMPLE_BORROWERS` | variable (optional) | Path to a custom borrower address list for Step 4 sampling (defaults to all addresses in the backup) |
 
-**Coverage/success-rate tracking:** every run appends to `backups/test-results/history.jsonl` (one JSON object per line — `status`, `failure_reason`, `completeness`, `checksum_ok`, `restore_ok`, `correctness`, `duration_seconds`). The script prints a running `passed/total (success rate %)` summary each time; the file itself is the source of truth for trend analysis (e.g. `jq -s 'map(.status=="pass") | add / length' backups/test-results/history.jsonl`).
+The workflow always executes the restore and correctness checks. Pull requests run shell syntax and restore-safety policy tests only; they never receive or use deployment secrets. The GitHub Actions token needs permission to read workflow artifacts and create/update repository issues for history persistence and failure alerts.
+
+**Coverage/success-rate tracking:** every run appends to `backups/test-results/history.jsonl` (one JSON object per line — `status`, `failure_reason`, `completeness`, `checksum_ok`, `restore_ok`, `correctness`, `duration_seconds`). The workflow carries this file forward through its `backup-verification-history` artifact, retained for 90 days. Preflight failures (including missing secrets and unsafe restore targets) are recorded too. The script prints the cumulative `passed/total (success rate %)` summary each time; the file is the source of truth for trend analysis (e.g. `jq -s 'map(.status=="pass") | add / length' backups/test-results/history.jsonl`).
 
 **Still requires an operator:** deciding whether a `false` completeness proof or a correctness mismatch reflects a real data-loss event (vs. an indexer lag or a staging environment quirk) is a judgment call — the drill's job is to make that failure loud and immediate, not to self-diagnose it.
 

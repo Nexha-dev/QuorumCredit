@@ -23,12 +23,12 @@
 # Optional environment variables:
 #   NETWORK               — Stellar network (default: testnet)
 #   STAGING_CONTRACT_ID   — Contract to restore INTO for the restore drill (default: same as CONTRACT_ID,
-#                           dry-run only in that case — see below)
+#                           must be set to a distinct disposable contract for an executed drill)
 #   STAGING_ADMIN_KEY     — Admin key for the staging restore target (default: ADMIN_KEY)
 #   BACKUP_TEST_HISTORY   — Path to the JSONL coverage/success-rate log (default: backups/test-results/history.jsonl)
 #   BACKUP_TEST_EXECUTE   — "true" to actually --execute the restore against STAGING_CONTRACT_ID (default: false,
-#                           i.e. dry-run only). Only set this when STAGING_CONTRACT_ID is a real disposable
-#                           staging deployment — never mainnet.
+#                           i.e. dry-run only). Never execute against the source contract.
+#   BACKUP_TEST_REQUIRE_RESTORE — Require a real executed restore (default: true).
 #
 # Exit code is non-zero if the drill fails, so this can gate CI / page on-call.
 
@@ -53,19 +53,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 NETWORK="${NETWORK:-testnet}"
-STAGING_CONTRACT_ID="${STAGING_CONTRACT_ID:-${CONTRACT_ID:-}}"
+STAGING_CONTRACT_ID="${STAGING_CONTRACT_ID:-}"
 STAGING_ADMIN_KEY="${STAGING_ADMIN_KEY:-${ADMIN_KEY:-}}"
 BACKUP_TEST_HISTORY="${BACKUP_TEST_HISTORY:-$PROJECT_ROOT/backups/test-results/history.jsonl}"
 BACKUP_TEST_EXECUTE="${BACKUP_TEST_EXECUTE:-false}"
+BACKUP_TEST_REQUIRE_RESTORE="${BACKUP_TEST_REQUIRE_RESTORE:-true}"
 
 mkdir -p "$(dirname "$BACKUP_TEST_HISTORY")"
-
-for var in CONTRACT_ID ADMIN_KEY; do
-    if [ -z "${!var:-}" ]; then
-        echo "Error: $var is not set." >&2
-        exit 1
-    fi
-done
 
 if ! command -v jq &>/dev/null; then
     echo "Error: 'jq' not found." >&2
@@ -77,6 +71,48 @@ START_EPOCH=$(date -u +%s)
 RUN_ID="drill_$(date -u +%Y%m%d_%H%M%SZ)"
 FAILURE_REASON=""
 STATUS="pass"
+
+record_preflight_failure() {
+    local reason="$1"
+    local duration_seconds
+    duration_seconds=$(($(date -u +%s) - START_EPOCH))
+    local result_json
+    result_json=$(jq -n \
+        --arg run_id "$RUN_ID" \
+        --arg timestamp "$START_TS" \
+        --arg network "$NETWORK" \
+        --arg contract_id "${CONTRACT_ID:-}" \
+        --arg staging_contract_id "$STAGING_CONTRACT_ID" \
+        --arg failure_reason "$reason" \
+        --argjson duration_seconds "$duration_seconds" \
+        '{run_id: $run_id, timestamp: $timestamp, network: $network, contract_id: $contract_id,
+          staging_contract_id: $staging_contract_id, status: "fail", failure_reason: $failure_reason,
+          completeness: "unknown", checksum_ok: "false", restore_ok: "false",
+          correctness: "skipped", duration_seconds: $duration_seconds}')
+    printf '%s\n' "$result_json" >> "$BACKUP_TEST_HISTORY"
+    echo "::error::$reason" >&2
+    echo "Backup verification preflight failed: $reason" >&2
+    exit 1
+}
+
+for var in CONTRACT_ID ADMIN_KEY; do
+    if [ -z "${!var:-}" ]; then
+        record_preflight_failure "$var is not set"
+    fi
+done
+
+if [ "$BACKUP_TEST_REQUIRE_RESTORE" = "true" ] && [ "$BACKUP_TEST_EXECUTE" != "true" ]; then
+    record_preflight_failure "BACKUP_TEST_EXECUTE=true is required for an automated restore drill"
+fi
+
+if [ "$BACKUP_TEST_EXECUTE" = "true" ]; then
+    if [ -z "$STAGING_CONTRACT_ID" ]; then
+        record_preflight_failure "STAGING_CONTRACT_ID is required for an executed restore"
+    fi
+    if [ "$STAGING_CONTRACT_ID" = "$CONTRACT_ID" ]; then
+        record_preflight_failure "STAGING_CONTRACT_ID must differ from CONTRACT_ID; refusing to restore into the source contract"
+    fi
+fi
 
 echo "QuorumCredit backup/restore test drill — $RUN_ID"
 echo "  Network            : $NETWORK"
@@ -356,7 +392,7 @@ echo "Drill result: $STATUS"
 [ -n "$FAILURE_REASON" ] && echo "  Reason: $FAILURE_REASON"
 echo "  Duration: ${DURATION_SECONDS}s"
 echo "  History : $BACKUP_TEST_HISTORY"
-echo "  Coverage: $PASS_RUNS/$TOTAL_RUNS runs passed all-time ($SUCCESS_RATE% success rate)"
+echo "  Coverage: $PASS_RUNS/$TOTAL_RUNS runs passed cumulatively ($SUCCESS_RATE% success rate)"
 echo "═══════════════════════════════════════════════════════════"
 
 rm -f "$BACKUP_LOG" "$RESTORE_LOG"
