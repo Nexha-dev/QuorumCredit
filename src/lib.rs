@@ -126,6 +126,14 @@ pub mod sbt_group;
 pub mod sbt_staking;
 // Issue #1741 — SBT Lineage Tracking
 pub mod sbt_lineage;
+// Issue #1733 — SBT Attribute Evolution
+pub mod sbt_attribute_evolution;
+// Issue #1734 — SBT Privacy Modes
+pub mod sbt_privacy_modes;
+// Issue #1735 — SBT Insurance Coverage
+pub mod sbt_insurance;
+// Issue #1736 — SBT Marketplace Integration
+pub mod sbt_marketplace;
 
 #[cfg(test)]
 mod governance_test;

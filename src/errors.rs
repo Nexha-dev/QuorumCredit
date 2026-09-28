@@ -713,4 +713,22 @@ EmergencyBypassNotAuthorised = 131,
     // ── Issue #1741: SBT Lineage Tracking ────────────────────────────────────
     /// No lineage node found for the requested sbt_id.
     SbtLineageNotFound = 237,
+
+    // ── Issue #1733: SBT Attribute Evolution ─────────────────────────────────
+    /// No attribute record found for the requested (sbt_id, attribute) key.
+    SbtAttributeNotFound = 238,
+    /// The requested attribute version does not exist in the history log.
+    SbtAttributeVersionNotFound = 239,
+
+    // ── Issue #1734: SBT Privacy Modes ───────────────────────────────────────
+    /// No privacy record found for the requested sbt_id.
+    SbtPrivacyNotFound = 240,
+
+    // ── Issue #1735: SBT Insurance Coverage ──────────────────────────────────
+    /// No insurance record found for the requested sbt_id.
+    SbtInsuranceNotFound = 241,
+
+    // ── Issue #1736: SBT Marketplace Integration ──────────────────────────────
+    /// No marketplace listing found for the requested sbt_id.
+    SbtMarketplaceListingNotFound = 242,
 }
