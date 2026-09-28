@@ -1270,6 +1270,26 @@ pub enum DataKey {
     // ── Issue #1741: SBT Lineage Tracking ─────────────────────────────────────
     /// sbt_id → SbtLineageNode
     SbtLineage(u64),
+
+    // ── Issue #1733: SBT Attribute Evolution ─────────────────────────────────
+    /// (sbt_id, attribute_key) → SbtAttributeRecord
+    SbtAttribute(u64, soroban_sdk::Bytes),
+
+    // ── Issue #1734: SBT Privacy Modes ───────────────────────────────────────
+    /// sbt_id → SbtPrivacyRecord
+    SbtPrivacy(u64),
+
+    // ── Issue #1735: SBT Insurance Coverage ──────────────────────────────────
+    /// sbt_id → SbtInsuranceRecord
+    SbtInsurance(u64),
+
+    // ── Issue #1736: SBT Marketplace Integration ──────────────────────────────
+    /// sbt_id → SbtMarketplaceListing
+    SbtMarketplaceListing(u64),
+    /// Global marketplace index: Vec<u64>
+    SbtMarketplaceIndex,
+    /// Global marketplace statistics: SbtMarketplaceStats
+    SbtMarketplaceStats,
 }
 
 /// Issue #867: Shared collateral pool backed by multiple vouchers.
